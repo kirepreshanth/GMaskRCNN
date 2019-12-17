@@ -1,1 +1,3 @@
-model_final.pth
+models/
+datasets/occluded_cityscapes
+__pycache__
