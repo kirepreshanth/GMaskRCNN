@@ -1,3 +1,8 @@
+
+###########################################
+# This script 
+#
+###########################################
 from argparse import ArgumentParser
 
 import glob
@@ -10,14 +15,14 @@ import matplotlib.pylab as pylab
 pylab.rcParams['figure.figsize'] = 20, 12
 
 import sys
-sys.path.append('/home/kirepreshanth/Documents/Dissertation/generative-inpainting-pytorch') # TODO allow this to be passed as part of the args.
+sys.path.append('../generative-inpainting-pytorch') # TODO allow this to be passed as part of the args.
 
 from PIL import Image
 import numpy as np
 
 from maskrcnn_benchmark.config import cfg
 from predictor import COCODemo
-from generator import generateInpaintedImage
+from generator import generateInpaintedImage, loadGenerator
 
 
 # TODO Move these to a uitls file.
@@ -33,7 +38,7 @@ def load(fileName):
 
 def imshow(img):
     plt.figure()
-    plt.imshow(img[:, :, [2, 1, 0]])
+    plt.imshow(img)
     plt.axis("off")
     plt.show()
     
@@ -42,17 +47,31 @@ def creatDirectoryIfNotExists(directory):
         os.mkdir(directory)
 
 parser = ArgumentParser()
-parser.add_argument('--config', type=str, default='/home/kirepreshanth/Documents/Dissertation/generative-inpainting-pytorch/checkpoints/cityscapes/hole_benchmark/config.yaml',
-                    help="training configuration")
+parser.add_argument('--g_config', type=str, default='models/deepfill/cityscapes/hole_benchmark/config.yaml',
+                    help='Path to trained DeepFill config file location.')
+parser.add_argument('--m_config', type=str, default='models/mask_rcnn/cityscapes_poly/config.yml',
+                    help='Path to trained Mask R-CNN config file location.')
 parser.add_argument('--seed', type=int, help='manual seed')
-parser.add_argument('--checkpoint_path', type=str, default='/home/kirepreshanth/Documents/Dissertation/generative-inpainting-pytorch/checkpoints/cityscapes/hole_benchmark', help='Path to the checkpoints where the latest GAN model is saved.')
-parser.add_argument('--folder', type=str, default='/home/kirepreshanth/Documents/Dissertation/datasets/cityscapes/occluded_dataset/leftImg8bit_co/val', help='Folder containing dataset with occlusions.')
-parser.add_argument('--mask', type=str, default='/home/kirepreshanth/Documents/Dissertation/generative-inpainting-pytorch/examples/center_mask_256.png')
-parser.add_argument('--output', type=str, default='/home/kirepreshanth/Documents/Dissertation/generative-inpainting-pytorch/examples/output_1.png')
+parser.add_argument('--checkpoint_path', type=str, default='models/deepfill/cityscapes/hole_benchmark', help='Path to the checkpoints where the latest GAN model is saved.')
+parser.add_argument('--folder', type=str, default='datasets/occluded_cityscapes/val', help='Folder containing dataset with occlusions.')
+parser.add_argument('--mask', type=str, default='center_mask_512.png')
+parser.add_argument('--save_output', type=bool, default=False)
 parser.add_argument('--flow', type=str, default='')
 parser.add_argument('--iter', type=int, default=0)
 
 args = parser.parse_args()
+
+# This updates the config options with the same 
+# config file used to train the MaskRCNN
+cfg.merge_from_file(args.m_config)
+
+coco_demo = COCODemo(
+    cfg,
+    min_image_size=800,
+    confidence_threshold=0.7,
+)
+
+netG = loadGenerator(args)
 
 for filePath in glob.glob(args.folder + "/**/*.png"):
     
@@ -68,36 +87,25 @@ for filePath in glob.glob(args.folder + "/**/*.png"):
 
     image_occluded = load(filePath)
 
-    inpainted_image = generateInpaintedImage(args, filePath)
+    inpainted_image = generateInpaintedImage(args, netG, filePath)
     inpainted_image = np.array(inpainted_image)[:, :, [2, 1, 0]]
-
-    config_file = "/home/kirepreshanth/Documents/Dissertation/config.yaml"
-
-    # This updates the config options with the same 
-    # config file used to train the MaskRCNN
-    cfg.merge_from_file(config_file)
-
-    coco_demo = COCODemo(
-        cfg,
-        min_image_size=800,
-        confidence_threshold=0.7,
-    )
 
     predictions_occluded = coco_demo.run_on_opencv_image(image_occluded)
     predictions_filled = coco_demo.run_on_opencv_image(inpainted_image)
-    
-    pathParts[-3] = pathParts[-3] + '_is_128'
-    segmented_folder = '/'.join(pathParts[:-2])
-    
-    creatDirectoryIfNotExists(segmented_folder)
-    city_folder = segmented_folder + '/' + city
-    creatDirectoryIfNotExists(city_folder)
-    
+        
     predictions_occluded = Image.fromarray(predictions_occluded[:, :, [2, 1, 0]])
     predictions_filled = Image.fromarray(predictions_filled[:, :, [2, 1, 0]])
     
-    predictions_occluded.save(city_folder + '/' + fileName_occluded_instanceSegmented)
-    predictions_filled.save(city_folder + '/' + fileName_filled_IS)
+    if args.save_output:
+        pathParts[-3] = pathParts[-3] + '_is_256'
+        segmented_folder = '/'.join(pathParts[:-2])
+        
+        creatDirectoryIfNotExists(segmented_folder)
+        city_folder = segmented_folder + '/' + city
+        creatDirectoryIfNotExists(city_folder)
     
-    #imshow(predictions_occluded)
-    #imshow(predictions_filled)
+        predictions_occluded.save(city_folder + '/' + fileName_occluded_instanceSegmented)
+        predictions_filled.save(city_folder + '/' + fileName_filled_IS)
+    else:
+        imshow(predictions_occluded)
+        imshow(predictions_filled)
