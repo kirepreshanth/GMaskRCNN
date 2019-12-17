@@ -1,3 +1,12 @@
+########################################################################
+# The code in this file was adapted from the original code found:
+# Du Ang (2019) [sourcecode] 
+# https://github.com/DAA233/generative-inpainting-pytorch
+
+# The majority of it has been changed, however, some code
+# may seem similar to the original, and so has been referenced.
+########################################################################
+
 import os
 import random
 
@@ -11,6 +20,7 @@ from model.networks import Generator
 from utils.tools import get_config, random_bbox, mask_image, is_image_file, default_loader, normalize, get_model_list
 from PIL import Image
 
+#Function to load the trained Generator.
 def loadGenerator(args):
     config = get_config(args.g_config)
     
@@ -46,6 +56,8 @@ def loadGenerator(args):
     
     return netG
 
+# Function to Hallucinate the three occlusions in the image
+# and returns the filled image.
 def generateInpaintedImage(args, netG, imagePath):
     config = get_config(args.g_config)
     occlusions = []
